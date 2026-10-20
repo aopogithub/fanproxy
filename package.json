@@ -1,0 +1,22 @@
+{
+  "name": "fanproxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "反向代理管理面板：二次封装 nginx，集成 certbot 证书签发与自动续期",
+  "main": "bin/fanproxy.js",
+  "bin": {
+    "fanproxy": "bin/fanproxy.js"
+  },
+  "scripts": {
+    "start": "node bin/fanproxy.js",
+    "dev": "node bin/fanproxy.js",
+    "dev:watch": "node --watch bin/fanproxy.js",
+    "compat": "node scripts/node-compat.js",
+    "doctor": "node bin/fanproxy.js doctor",
+    "smoke": "bash scripts/smoke.sh"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {}
+}

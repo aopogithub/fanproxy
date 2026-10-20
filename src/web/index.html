@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>fanproxy · 反向代理控制面板</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="loginOverlay" class="overlay" hidden>
+    <form id="loginForm" class="login-card">
+      <p class="eyebrow">fanproxy console</p>
+      <h2 class="heading-xl">登录控制台</h2>
+      <p class="body-sm body-light">请输入面板账号密码</p>
+      <label>用户名<input name="username" autocomplete="username" required /></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password" required /></label>
+      <button type="submit" class="btn btn-primary btn-block">登录</button>
+      <p id="loginError" class="form-error" role="alert"></p>
+    </form>
+  </div>
+
+  <header class="primary-nav">
+    <div class="nav-inner">
+      <span class="wordmark">fanproxy</span>
+      <nav id="tabs" class="nav-links">
+        <button data-tab="sites" class="tab active">站点</button>
+        <button data-tab="streams" class="tab">TCP 转发</button>
+        <button data-tab="certs" class="tab">证书</button>
+        <button data-tab="logs" class="tab">日志</button>
+        <button data-tab="backups" class="tab">备份</button>
+        <button data-tab="settings" class="tab">设置</button>
+      </nav>
+      <div class="nav-right">
+        <span id="currentUser" class="nav-meta"></span>
+        <button id="refreshBtn" class="btn btn-secondary-dark btn-compact">刷新</button>
+        <button id="logoutBtn" class="btn btn-secondary-dark btn-compact" hidden>登出</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="band band-soft band-tight">
+    <div class="band-inner">
+      <div class="stats" id="envPanel">
+        <article class="card" id="nginxCard"><p class="stat-label">nginx</p><p class="stat-value">检测中…</p></article>
+        <article class="card" id="certbotCard"><p class="stat-label">certbot</p><p class="stat-value">检测中…</p></article>
+        <article class="card" id="schedulerCard"><p class="stat-label">自动续期</p><p class="stat-value">检测中…</p></article>
+        <article class="card" id="backupCard"><p class="stat-label">配置备份</p><p class="stat-value">检测中…</p></article>
+      </div>
+    </div>
+  </section>
+
+  <main class="band band-light">
+    <div class="band-inner">
+      <!-- 站点 -->
+      <section class="view" id="view-sites">
+        <div class="layout">
+          <div class="panel">
+            <div class="panel-head">
+              <h2 class="heading-lg">站点</h2>
+              <div class="spacer"></div>
+              <label id="healthAutoLabel" class="check check-inline"><input type="checkbox" id="healthAuto" checked /> 健康自动刷新</label>
+              <button id="pruneBtn" class="btn btn-secondary-light btn-compact">清理失效配置</button>
+              <button id="applyAllBtn" class="btn btn-secondary-light btn-compact">一键应用全部</button>
+              <button id="newSiteBtn" class="btn btn-primary btn-compact">新建站点</button>
+            </div>
+            <ul id="siteList" class="site-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- TCP / UDP 转发 -->
+      <section class="view" id="view-streams" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="heading-lg">TCP / UDP 转发</h2>
+            <div class="spacer"></div>
+            <button id="streamIncludeBtn" class="btn btn-secondary-light btn-compact" hidden>写入 stream include</button>
+            <button id="streamApplyAllBtn" class="btn btn-secondary-light btn-compact">一键应用全部</button>
+            <button id="newStreamBtn" class="btn btn-primary btn-compact">新建转发</button>
+          </div>
+          <p class="body-sm body-light">4 层转发（nginx stream 模块）：不做 TLS 终止、不解析内容，整条连接原样透传给后端——设备看到的还是后端自己的证书。一条规则占用一个监听端口，不能按域名分流；非 HTTP 协议或客户端要校验后端证书时用它。</p>
+          <p id="streamStatus" class="body-sm body-light"></p>
+          <ul id="streamList" class="site-list"></ul>
+        </div>
+      </section>
+
+      <!-- 证书 -->
+      <section class="view" id="view-certs" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="heading-lg">证书</h2>
+            <div class="spacer"></div>
+            <button id="renewBtn" class="btn btn-secondary-light btn-compact">立即检查续期</button>
+            <button id="reloadCertsBtn" class="btn btn-secondary-light btn-compact">刷新列表</button>
+          </div>
+          <table class="table" id="certTable">
+            <thead><tr><th>证书名</th><th>域名</th><th>到期时间</th><th>剩余</th><th>关联站点</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="body-sm body-light">没有关联站点的证书可以直接删除（比如测试证书、换域名后的残留）。仍被站点引用的证书要先在站点里取消启用 HTTPS 或换成别的证书，否则删掉会让 nginx 配置失效。</p>
+        </div>
+      </section>
+
+      <!-- 日志 -->
+      <section class="view" id="view-logs" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="heading-lg">访问日志</h2>
+            <div class="spacer"></div>
+            <select id="logSiteSelect"></select>
+            <select id="logHours">
+              <option value="1">最近 1 小时</option>
+              <option value="24" selected>最近 24 小时</option>
+              <option value="168">最近 7 天</option>
+              <option value="720">最近 30 天</option>
+            </select>
+            <button id="loadLogsBtn" class="btn btn-primary btn-compact">查询</button>
+          </div>
+
+          <div class="stats" id="logStats"></div>
+
+          <div class="layout">
+            <div>
+              <h3 class="section-label">访问量趋势</h3>
+              <div class="chart">
+                <div id="logYAxis" class="chart-y"></div>
+                <div class="chart-scroll">
+                  <div class="chart-canvas">
+                    <div class="chart-plot">
+                      <div id="logTimeline" class="timeline"></div>
+                      <span class="grid-line" aria-hidden="true"></span>
+                    </div>
+                    <div id="logXAxis" class="chart-x"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 class="section-label">Top URL / IP / UA</h3>
+              <div id="logTops" class="tops"></div>
+            </div>
+          </div>
+
+          <h3 class="section-label">最近请求</h3>
+          <pre id="logRecent" class="log"></pre>
+        </div>
+      </section>
+
+      <!-- 备份 -->
+      <section class="view" id="view-backups" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="heading-lg">配置快照</h2>
+            <div class="spacer"></div>
+            <input id="backupReason" placeholder="手动快照备注（可选，永久保留）" />
+            <button id="createBackupBtn" class="btn btn-primary btn-compact">创建快照</button>
+          </div>
+          <h3 class="section-label">手动快照</h3>
+          <p id="manualBackupNote" class="body-sm body-light"></p>
+          <table class="table" id="manualBackupTable">
+            <thead><tr><th>时间</th><th>原因</th><th>文件</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+
+          <h3 class="section-label">自动快照</h3>
+          <p id="autoBackupNote" class="body-sm body-light"></p>
+          <table class="table" id="autoBackupTable">
+            <thead><tr><th>时间</th><th>原因</th><th>文件</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="view" id="view-settings" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="heading-lg">面板账号</h2>
+            <div class="spacer"></div>
+            <button id="changePwdBtn" class="btn btn-secondary-light btn-compact" type="button">修改我的密码</button>
+            <button id="newUserBtn" class="btn btn-primary btn-compact" type="button">新增账号</button>
+          </div>
+          <p id="pwdBanner" class="callout callout-warn" hidden></p>
+          <table class="table" id="userTable">
+            <thead><tr><th>用户名</th><th>更新时间</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <form id="userForm" class="form" hidden>
+            <h3 id="userFormTitle" class="heading-lg">修改我的密码</h3>
+            <div class="row">
+              <label>用户名<input name="username" autocomplete="username" required /></label>
+              <label>密码<input name="password" type="password" minlength="6" autocomplete="new-password" placeholder="至少 6 位" required /></label>
+              <label>确认密码<input name="confirm" type="password" minlength="6" autocomplete="new-password" placeholder="再输入一次" required /></label>
+            </div>
+            <div class="actions">
+              <button type="submit" class="btn btn-primary">保存</button>
+              <button type="button" id="cancelUserBtn" class="btn btn-secondary-light">取消</button>
+            </div>
+            <p id="userFormStatus" class="form-error" role="alert"></p>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="heading-lg">健康检查</h2>
+            <div class="spacer"></div>
+            <button id="saveHealthBtn" class="btn btn-primary btn-compact" type="button">保存</button>
+          </div>
+          <p class="body-sm body-light">fanproxy 会按间隔主动探测每个已启用站点的上游地址（TCP，填了路径再加一次 HTTP 探测），站点列表里用 20 个竖条展示最近 20 次结果：绿=成功、红=失败、灰=暂无数据；列表上方的「健康自动刷新」可以控制竖条是否定时局部刷新。单个站点可在站点配置里用「健康检查路径」覆盖这里的默认路径。</p>
+          <form id="healthForm" class="form" autocomplete="off">
+            <div class="checks">
+              <label class="check"><input type="checkbox" name="enabled" /> 启用主动健康检查</label>
+            </div>
+            <div class="row">
+              <label>探测间隔（秒）<input name="intervalSeconds" type="number" min="10" max="86400" /></label>
+              <label>探测超时（毫秒）<input name="timeoutMs" type="number" min="200" max="60000" /></label>
+              <label>默认探测路径<input name="path" placeholder="/healthz（留空只做 TCP 探测）" /></label>
+            </div>
+            <p id="healthStatus" class="body-sm body-light" hidden></p>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2 class="heading-lg">运行信息</h2></div>
+          <div id="runtimeInfo" class="kv"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="heading-lg">nginx 接入</h2>
+            <div class="spacer"></div>
+            <button id="includeBtn" class="btn btn-primary btn-compact" hidden>写入 include</button>
+          </div>
+          <div id="setupInfo" class="kv"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <section class="band band-dark">
+    <div class="band-inner">
+      <div class="panel-head">
+        <h2 class="heading-lg on-dark">输出</h2>
+        <div class="spacer"></div>
+        <button id="clearLogBtn" class="btn btn-secondary-dark btn-compact">清空</button>
+      </div>
+      <pre id="log" class="log log-dark"></pre>
+    </div>
+  </section>
+
+  <div id="siteOverlay" class="overlay overlay-modal" hidden>
+    <div class="modal-card">
+      <div class="panel-head">
+        <h2 id="formTitle" class="heading-lg">站点配置</h2>
+        <span id="formHint" class="muted caption-sm"></span>
+        <div class="spacer"></div>
+        <button type="button" id="siteModalClose" class="btn btn-secondary-light btn-compact">关闭</button>
+      </div>
+
+            <form id="siteForm" class="form" autocomplete="off">
+              <input type="hidden" name="id" />
+
+              <label>名称<input name="name" placeholder="例如 博客" required /></label>
+              <label>域名（空格或逗号分隔）<input name="serverNames" placeholder="example.com www.example.com" required /></label>
+
+              <div class="row">
+                <label>后端协议
+                  <select name="upstream.scheme">
+                    <option value="http">http</option>
+                    <option value="https">https</option>
+                    <option value="grpc">grpc（gRPC 明文 h2c）</option>
+                    <option value="grpcs">grpcs（gRPC over TLS）</option>
+                  </select>
+                </label>
+                <label>后端地址<input name="upstream.host" value="127.0.0.1" required /></label>
+                <label>后端端口<input name="upstream.port" type="number" min="1" max="65535" value="8080" required /></label>
+              </div>
+
+              <div class="row">
+                <label>HTTP 端口<input name="listenHttp" type="number" value="80" /></label>
+                <label>HTTPS 端口<input name="listenHttps" type="number" value="443" /></label>
+                <label>请求体上限<input name="advanced.clientMaxBodySize" value="64m" /></label>
+              </div>
+
+              <div class="checks">
+                <label class="check"><input type="checkbox" name="upstream.websocket" /> WebSocket</label>
+                <label class="check"><input type="checkbox" name="ssl.enabled" /> 启用 HTTPS（保存时自动申请证书）</label>
+                <label class="check"><input type="checkbox" name="noHttp" /> 关闭 HTTP（只允许 HTTPS 访问）</label>
+                <label class="check"><input type="checkbox" name="ssl.autoRenew" checked /> 自动续期</label>
+                <label class="check"><input type="checkbox" name="ssl.staging" /> 测试证书 (staging，浏览器会提示不安全)</label>
+                <label class="check"><input type="checkbox" name="enabled" checked /> 启用站点</label>
+              </div>
+
+              <div class="row">
+                <label>证书邮箱<input name="ssl.email" type="email" placeholder="ops@example.com" /></label>
+                <label id="healthPathLabel">健康检查路径<input name="advanced.healthCheckPath" placeholder="/healthz（留空只做 TCP 探测）" /></label>
+              </div>
+
+              <label>证书路径（留空则保存时自动申请）<input name="ssl.certPath" placeholder="/etc/letsencrypt/live/example.com/fullchain.pem" /></label>
+              <label>私钥路径（留空则保存时自动申请）<input name="ssl.keyPath" placeholder="/etc/letsencrypt/live/example.com/privkey.pem" /></label>
+
+              <p class="body-sm body-light">勾选「启用 HTTPS」后保存，fanproxy 会先让站点以 HTTP 生效完成 ACME 校验，再调用 certbot 签发证书并自动切换 HTTPS + 80 跳转；本地已有证书则直接复用。取消勾选并保存会释放 certbot 管理的证书路径，那张证书随即变为「未关联」、可以在证书页删除。</p>
+              <p class="body-sm body-light">勾选「关闭 HTTP」后该站点不再监听 80 端口（只保留 HTTPS，适合做安全加固）。证书签发与自动续期需要 80 端口做 ACME 校验，fanproxy 会在续期时临时放通、续期完立刻撤掉，所以域名仍需解析到本机；如果有证书但签发时间较久，请注意续期窗口。</p>
+
+              <label>附加响应头（每行一条）<textarea name="advanced.extraHeaders" rows="2" placeholder="X-Frame-Options DENY"></textarea></label>
+              <label>附加 location 片段（原样写入）<textarea name="advanced.extraLocations" rows="2" placeholder="location /api/ { proxy_pass http://127.0.0.1:9000; }"></textarea></label>
+
+              <div class="actions">
+                <button type="submit" class="btn btn-primary">保存并应用</button>
+              </div>
+
+              <p id="formStatus" class="body-sm body-light" hidden></p>
+            </form>
+    </div>
+  </div>
+
+  <div id="streamOverlay" class="overlay overlay-modal" hidden>
+    <div class="modal-card">
+      <div class="panel-head">
+        <h2 id="streamFormTitle" class="heading-lg">新建 TCP 转发</h2>
+        <span id="streamFormHint" class="muted caption-sm"></span>
+        <div class="spacer"></div>
+        <button type="button" id="streamModalClose" class="btn btn-secondary-light btn-compact">关闭</button>
+      </div>
+
+      <form id="streamForm" class="form" autocomplete="off">
+        <input type="hidden" name="id" />
+
+        <label>名称<input name="name" placeholder="例如 NAS 设备空间（留空则用端口号）" /></label>
+
+        <div class="row">
+          <label>协议
+            <select name="protocol">
+              <option value="tcp">tcp</option>
+              <option value="udp">udp</option>
+            </select>
+          </label>
+          <label>监听地址（留空 = 所有网卡）<input name="listenAddress" placeholder="例如 192.168.101.200" /></label>
+          <label>监听端口<input name="listenPort" type="number" min="1" max="65535" value="8443" required /></label>
+        </div>
+
+        <div class="row">
+          <label>后端地址<input name="backend.host" value="127.0.0.1" required /></label>
+          <label>后端端口<input name="backend.port" type="number" min="1" max="65535" value="443" required /></label>
+          <label>空闲超时（秒）<input name="proxyTimeoutSeconds" type="number" min="1" value="600" /></label>
+        </div>
+
+        <div class="checks">
+          <label class="check"><input type="checkbox" name="enabled" checked /> 启用</label>
+        </div>
+
+        <p class="body-sm body-light">转发是 4 层透传：不改证书、不看内容，后端看到的客户端 IP 会变成这台代理的 IP。要让代理解析域名/证书（HTTP、gRPC），请用「站点」页。</p>
+
+        <div class="actions">
+          <button type="submit" class="btn btn-primary">保存并应用</button>
+        </div>
+
+        <p id="streamFormStatus" class="body-sm body-light" hidden></p>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

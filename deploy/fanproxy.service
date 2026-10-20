@@ -1,0 +1,17 @@
+[Unit]
+Description=fanproxy - nginx 反向代理管理面板
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/fanproxy
+Environment=FAN_CONFIG=/etc/fanproxy/config.json
+ExecStart=/usr/bin/node /opt/fanproxy/bin/fanproxy.js
+Restart=on-failure
+RestartSec=5
+# 面板需要读写 nginx 配置目录与证书目录，因此以 root 运行
+
+[Install]
+WantedBy=multi-user.target

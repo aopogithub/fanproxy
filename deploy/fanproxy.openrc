@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+# Alpine / Gentoo 等 OpenRC 系统的服务脚本（systemd 系统请用 fanproxy.service）。
+name="fanproxy"
+description="fanproxy 反向代理控制面板（nginx + certbot）"
+
+command="/usr/bin/node"
+command_args="/opt/fanproxy/bin/fanproxy.js"
+command_background="yes"
+pidfile="/run/fanproxy.pid"
+output_log="/var/log/fanproxy.log"
+error_log="/var/log/fanproxy.err"
+
+export FAN_CONFIG="/etc/fanproxy/config.json"
+
+depend() {
+	need net
+	after firewall
+}
+
+start_pre() {
+	checkpath --directory --mode 0755 /etc/fanproxy
+}

@@ -1,0 +1,52 @@
+{
+  "panel": {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "authToken": "",
+    "sessionTtlHours": 12,
+    "adminUser": "admin",
+    "adminPassword": "admin"
+  },
+  "nginx": {
+    "bin": "nginx",
+    "mainConf": "/etc/nginx/nginx.conf",
+    "sitesDir": "/etc/nginx/conf.d",
+    "streamDir": "/etc/nginx/stream.d",
+    "filePrefix": "fanproxy-",
+    "logDir": "/var/log/nginx",
+    "logFormat": "combined",
+    "user": "www-data"
+  },
+  "certbot": {
+    "bin": "certbot",
+    "email": "",
+    "webroot": "/var/www/certbot",
+    "liveDir": "/etc/letsencrypt/live",
+    "staging": false,
+    "renewBeforeDays": 30,
+    "timeoutMs": 300000,
+    "extraArgs": []
+  },
+  "scheduler": {
+    "enabled": true,
+    "intervalMinutes": 720
+  },
+  "backup": {
+    "enabled": true,
+    "dir": "",
+    "keep": 50
+  },
+  "logs": {
+    "maxBytes": 8388608,
+    "maxLines": 2000,
+    "defaultHours": 24
+  },
+  "healthcheck": {
+    "enabled": true,
+    "intervalSeconds": 60,
+    "timeoutMs": 3000,
+    "path": ""
+  },
+  "dataDir": "./data",
+  "logLevel": "info"
+}
